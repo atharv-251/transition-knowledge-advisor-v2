@@ -24,6 +24,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from app.kt_tracker import service
+from app.kt_tracker.demo_graph_client import DemoGraphClient
 from app.kt_tracker.graph_client import GraphClient
 from app.kt_tracker.models import (
     KtMeeting,
@@ -43,6 +44,21 @@ DEFAULT_SUBJECT_KEYWORDS = [
 ]
 LOOKBACK_DAYS = int(os.getenv("KT_GRAPH_LOOKBACK_DAYS", "14"))
 LOOKAHEAD_DAYS = int(os.getenv("KT_GRAPH_LOOKAHEAD_DAYS", "30"))
+
+
+def build_graph_client() -> GraphClient | DemoGraphClient:
+    """Return the configured Graph client, real or demo.
+
+    ``KT_GRAPH_MODE=demo`` forces the in-memory :class:`DemoGraphClient` so
+    the full pipeline can be demonstrated before Entra ID/Graph access has
+    been provisioned. ``KT_GRAPH_MODE=live`` (the default) uses the real
+    :class:`GraphClient`. Switching later is a one-line env var change - no
+    code in this module or the API layer needs to change.
+    """
+    mode = os.getenv("KT_GRAPH_MODE", "live").strip().lower()
+    if mode == "demo":
+        return DemoGraphClient()
+    return GraphClient()
 
 
 def _meeting_status(event: dict, now: datetime) -> KtMeetingStatus:
@@ -67,7 +83,7 @@ def _parse_graph_datetime(value: dict) -> datetime:
 
 
 def discover_meetings(
-    client: GraphClient,
+    client: GraphClient | DemoGraphClient,
     mailbox: str,
     subject_keywords: list[str] | None = None,
 ) -> list[KtMeeting]:
@@ -99,7 +115,7 @@ def discover_meetings(
     return meetings
 
 
-def _resolve_online_meeting_id(client: GraphClient, meeting: KtMeeting, mailbox: str) -> str | None:
+def _resolve_online_meeting_id(client: GraphClient | DemoGraphClient, meeting: KtMeeting, mailbox: str) -> str | None:
     # Attendance/transcripts are addressed by Graph onlineMeeting id, which we
     # resolve lazily only for meetings that actually need analysis.
     join_url = None
@@ -154,7 +170,7 @@ def _safe_parse(value: str | None) -> datetime | None:
 
 
 def analyze_completed_meeting(
-    client: GraphClient,
+    client: GraphClient | DemoGraphClient,
     mailbox: str,
     meeting: KtMeeting,
     expected_topics: list[str],
@@ -211,12 +227,15 @@ MEETING_STORE: dict[str, KtMeeting] = {}
 
 def sync_all(mailbox: str, plan_id: str | None = None) -> MeetingSyncResult:
     """Run one full discover -> upsert -> analyze -> update cycle."""
-    result = MeetingSyncResult(enabled=False, mailbox=mailbox)
-    client = GraphClient()
+    demo_mode = os.getenv("KT_GRAPH_MODE", "live").strip().lower() == "demo"
+    result = MeetingSyncResult(enabled=False, mailbox=mailbox, demo_mode=demo_mode)
+    client = build_graph_client()
     if not client.is_configured:
         result.message = (
             "Microsoft Graph is not configured (missing AZURE_TENANT_ID / "
-            "AZURE_CLIENT_ID / AZURE_CLIENT_SECRET). No meetings were synced."
+            "AZURE_CLIENT_ID / AZURE_CLIENT_SECRET). No meetings were synced. "
+            "Set KT_GRAPH_MODE=demo to run the pipeline against sample data "
+            "while real Graph access is pending."
         )
         return result
     result.enabled = True
@@ -235,10 +254,16 @@ def sync_all(mailbox: str, plan_id: str | None = None) -> MeetingSyncResult:
 
     result.meetings_discovered = len(meetings)
 
+    default_expected_topics = getattr(client, "default_expected_topics", None)
+
     for meeting in meetings:
         try:
             MEETING_STORE[meeting.external_meeting_id] = meeting
-            activity, created = service.upsert_activity_from_meeting(target_plan_id, meeting)
+            activity, created = service.upsert_activity_from_meeting(
+                target_plan_id,
+                meeting,
+                default_expected_topics=default_expected_topics,
+            )
             meeting.activity_id = activity.activity_id
             meeting.plan_id = target_plan_id
             if created:

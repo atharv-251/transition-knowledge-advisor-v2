@@ -11,6 +11,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database.sql_connection import database_connection
+from app.kt_scheduler.models import ScheduleRunRequest, ScheduleRunResult
+from app.kt_scheduler.service import run_scheduler as run_kt_scheduler
 from app.kt_tracker.models import (
     ActivityUpdateRequest,
     CapabilitiesResponse,
@@ -106,6 +108,14 @@ TAGS_METADATA = [
             "retrieves attendance and transcripts, runs AI topic-coverage "
             "analysis, and automatically updates KT Activities so no one "
             "has to manually mark a KT session complete."
+        ),
+    },
+    {
+        "name": "KT Scheduler",
+        "description": (
+            "Schedules KT sessions from a modular plan input source. The "
+            "current source is CSV/XLSX, and invitations are sent through "
+            "SMTP as Outlook-compatible iCalendar (.ics) requests."
         ),
     },
 ]
@@ -330,14 +340,17 @@ async def capabilities() -> CapabilitiesResponse:
             "overdue_detect",
             "meeting_auto_sync",
             "transcript_analysis",
+            "meeting_invite_scheduling",
         ],
         supported_domains=[
             "kt_plan",
             "kt_activity",
             "teams",
             "outlook",
+            "smtp",
+            "calendar_invites",
         ],
-        supported_file_types=["json"],
+        supported_file_types=["json", "csv", "xlsx", "xlsm"],
         endpoints={
             "plan_import": "/api/v1/kt-tracker/plan/import",
             "activities": "/api/v1/kt-tracker/activities",
@@ -347,8 +360,52 @@ async def capabilities() -> CapabilitiesResponse:
             "meetings_sync": "/api/v1/kt-tracker/meetings/sync",
             "meetings": "/api/v1/kt-tracker/meetings",
             "activity_analysis": "/api/v1/kt-tracker/activities/{activity_id}/analysis",
+            "scheduler_run": "/api/v1/kt-scheduler/run",
         },
     )
+
+
+@app.post(
+    "/api/v1/kt-scheduler/run",
+    response_model=ScheduleRunResult,
+    tags=["KT Scheduler"],
+    summary="Run the KT Scheduler Bot",
+    description=(
+        "Parses a CSV/XLSX KT plan, generates Outlook-compatible .ics "
+        "meeting invitations, and sends them through SMTP. By default the "
+        "scheduler should be used in dry-run/test mode first so invites are "
+        "previewed or redirected to a test mailbox instead of all plan "
+        "participants."
+    ),
+)
+async def run_scheduler_endpoint(
+    payload: Annotated[
+        ScheduleRunRequest,
+        Body(description="Scheduler input file and safe-mode overrides."),
+    ],
+) -> ScheduleRunResult:
+    try:
+        return await asyncio.to_thread(
+            run_kt_scheduler,
+            payload.input_path,
+            dry_run=payload.dry_run,
+            test_mode=payload.test_mode,
+            test_recipients=[
+                str(recipient)
+                for recipient in (payload.test_recipients or [])
+            ] or None,
+            force_resend=payload.force_resend,
+        )
+    except FileNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(error),
+        ) from error
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
 
 
 @app.post(
@@ -380,6 +437,7 @@ async def import_tracker_plan(
         contract_version=plan.contract_version,
         activities=plan.activities,
     )
+
 
 
 @app.get(

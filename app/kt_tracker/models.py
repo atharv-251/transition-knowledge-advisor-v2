@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import date, datetime
 from typing import Literal
 
@@ -377,7 +378,7 @@ class KtActivity(BaseModel):
     """One trackable KT activity."""
 
     activity_id: str = Field(
-        default_factory=lambda: "act-" + str(abs(hash(str(datetime.utcnow())))),
+        default_factory=lambda: f"act-{uuid.uuid4().hex[:12]}",
         description="Unique KT activity ID.",
     )
     plan_id: str = Field(description="Parent KT plan ID.")
@@ -645,6 +646,14 @@ class MeetingSyncResult(BaseModel):
 
     enabled: bool
     mailbox: str = ""
+    demo_mode: bool = Field(
+        default=False,
+        description=(
+            "True when this sync ran against sample Microsoft 365 data "
+            "(KT_GRAPH_MODE=demo) instead of a real tenant, e.g. while Entra "
+            "ID/Graph access is still being provisioned."
+        ),
+    )
     meetings_discovered: int = 0
     activities_created: int = 0
     activities_updated: int = 0

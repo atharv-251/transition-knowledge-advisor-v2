@@ -55,6 +55,34 @@ This repository is now focused on the KT Tracker Bot, a governed AI service for 
 - `POST /api/v1/kt-tracker/meetings/sync` - on-demand trigger for the automated Outlook/Teams sync
 - `GET /api/v1/kt-tracker/meetings` - meetings discovered from Outlook/Teams
 - `GET /api/v1/kt-tracker/activities/{activity_id}/analysis` - the AI transcript/attendance analysis behind an activity's status
+- `GET /api/v1/kt-tracker/activities/{activity_id}/analysis` - the AI transcript/attendance analysis behind an activity's status
+- `POST /api/v1/kt-scheduler/run` - parse CSV/XLSX KT schedule input and generate/send SMTP `.ics` meeting invitations
+- `GET /api/v1/transitions`, `GET /api/v1/transitions/latest`, `GET /api/v1/transitions/{id}` - transition documents (master plan/schedule/availability) backing the Transition Workspace UI
+- `POST /api/v1/transitions/upload` - upload a new transition's master plan/schedule documents
+- `POST /api/v1/transitions/{id}/teams-transcript` - attach a Teams transcript file to a transition
+
+## KT Scheduler Bot
+
+`app/kt_scheduler` is a separate bot package that follows the same patterns as
+KT Tracker while staying loosely coupled. It reads a KT schedule from CSV/XLSX
+today, generates Outlook-compatible iCalendar invitations, and sends them via
+SMTP. Test mode and dry-run are enabled by default so the first run redirects
+all invites to `appsupport@vwgds.in` and sends nothing unless explicitly
+requested.
+
+See `docs/KT_SCHEDULER.md` for configuration and run/test commands.
+
+## Transition Workspace UI
+
+A lightweight browser dashboard is served at `/` (`app/static/index.html`,
+`app.js`, `styles.css`) backed by the `/api/v1/transitions*` endpoints and
+`app/kt_tracker/transition_documents.py`. It lets you upload or select a
+transition and browse its master plan, schedule, and availability tables in
+one place, with pagination and summary tiles (topic count, session count,
+capacity, approval status). `app/kt_tracker/transition_documents.py` currently
+reads local `Transition_Docs` files as a stand-in for the KT Planner bot's
+output - see `docs/KT_PLANNER_COMPATIBILITY.md` for the field-mapping contract
+that keeps this additive and forward-compatible with the real KT Planner API.
 
 ## Automated Microsoft 365 KT lifecycle
 
@@ -78,6 +106,30 @@ and attendance analysis shows every `expected_topics` entry was actually
 covered. A meeting whose scheduled end time has simply passed, with no
 transcript/attendance evidence, is left untouched rather than auto-completed.
 
+### Demo mode (no Entra ID/Graph access required)
+
+Real Entra ID app registration and Graph admin consent can take time to
+provision (see `docs/IT_ACCESS_REQUEST.md`). To demo the **entire** pipeline
+end-to-end before that access exists, set:
+
+```
+KT_GRAPH_MODE=demo
+```
+
+This swaps in `app/kt_tracker/demo_graph_client.py` - an in-memory stand-in
+implementing the exact same interface as the real `GraphClient` - seeded
+with three realistic sample KT meetings (one fully covered, one partially
+covered, one still upcoming) and matching Teams-style transcripts. Every
+downstream step (dedupe/upsert, attendance parsing, transcript analysis,
+topic comparison, status/readiness derivation, follow-up creation) runs
+unmodified against this sample data, so the demo proves the real logic, not
+a canned response.
+
+Switching to a real tenant later is a **one-line change**: set
+`KT_GRAPH_MODE=live` (or simply remove the variable, since `live` is the
+default) once `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET`
+are populated with real values. No application code changes are required.
+
 ### Required Azure AD app registration (application permissions, admin consent)
 
 | Permission | Purpose |
@@ -100,10 +152,11 @@ Additional tenant setup:
 
 | Variable | Purpose |
 |---|---|
-| `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` | Graph app-only credentials |
+| `KT_GRAPH_MODE` | `demo` (sample data, no Graph access needed) or `live` (default, real Graph) |
+| `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` | Graph app-only credentials (only needed for `live`) |
 | `KT_GRAPH_SYNC_ENABLED` | `true` to start the background scheduler |
 | `KT_GRAPH_SYNC_INTERVAL_SECONDS` | Poll interval (default 900s) |
-| `KT_GRAPH_MAILBOXES` | Comma-separated mailboxes/UPNs to scan |
+| `KT_GRAPH_MAILBOXES` | Comma-separated mailboxes/UPNs to scan (any placeholder value works in demo mode) |
 | `KT_GRAPH_SUBJECT_KEYWORDS` | Subject keywords used to detect KT meetings |
 | `KT_GRAPH_LOOKBACK_DAYS` / `KT_GRAPH_LOOKAHEAD_DAYS` | Calendar window to scan |
 

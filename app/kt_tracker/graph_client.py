@@ -57,6 +57,12 @@ class GraphToken:
 class GraphClient:
     """Minimal Graph REST client backed by azure-identity client-credentials auth."""
 
+    #: Real Graph has no notion of a "default" expected-topics list; this
+    #: stays ``None`` so ``meeting_sync_service`` leaves newly auto-created
+    #: activities with an empty list unless a KT plan already supplied one.
+    #: ``DemoGraphClient`` overrides this to seed a realistic demo.
+    default_expected_topics: list[str] | None = None
+
     def __init__(
         self,
         tenant_id: str | None = None,

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import itertools
 import json
+import uuid
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -21,6 +23,7 @@ from app.kt_tracker.models import (
 )
 
 PLAN_STORE: dict[str, KtPlan] = {}
+_activity_id_sequence = itertools.count(1)
 DEMO_PLAN_IDS: set[str] = set()
 DEMO_DATA_PATH = Path(__file__).resolve().parents[2] / "demo_data.json"
 
@@ -30,7 +33,15 @@ def _now_date() -> date:
 
 
 def _generate_activity_id() -> str:
-    return f"act-{abs(hash(str(datetime.utcnow().timestamp()))) % 1000000:06d}"
+    """Generate a collision-free KT activity ID.
+
+    Must never repeat, even when several activities are created within the
+    same microsecond (e.g. back-to-back Microsoft Graph meeting upserts) -
+    a timestamp-hash-based ID previously used here could collide in that
+    case, silently causing analysis results to be applied to the wrong
+    activity (lookups match on the first activity found with that ID).
+    """
+    return f"act-{next(_activity_id_sequence):06d}-{uuid.uuid4().hex[:6]}"
 
 
 def _activity_counts(activities: list[KtActivity]) -> dict[str, int]:
@@ -311,12 +322,18 @@ def upsert_activity_from_meeting(
     plan_id: str,
     meeting: KtMeeting,
     default_owner: str = "",
+    default_expected_topics: list[str] | None = None,
 ) -> tuple[KtActivity, bool]:
     """Create or update the KT activity linked to a discovered meeting.
 
     Returns (activity, created). Idempotent on ``meeting.external_meeting_id`` so
     the same Outlook occurrence is never turned into two activities, and a
     reschedule/cancellation just updates the existing record in place.
+
+    ``default_expected_topics`` seeds a brand-new activity's expected topic
+    list when nothing else (e.g. a matching KT Planner import) has already
+    defined one, so transcript analysis has something concrete to compare
+    against instead of an empty list.
     """
     plan = PLAN_STORE.get(plan_id)
     if plan is None:
@@ -358,6 +375,7 @@ def upsert_activity_from_meeting(
         actual_start_date=meeting.start_time.date() if meeting.start_time else None,
         progress_percent=0,
         source="ms365_graph_sync",
+        expected_topics=list(default_expected_topics or []),
         source_transition_id=plan.source_transition_id,
         source_session_id=meeting.source_session_id,
         contract_version=meeting.contract_version or plan.contract_version,
