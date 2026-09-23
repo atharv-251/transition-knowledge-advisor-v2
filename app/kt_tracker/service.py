@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import itertools
+import json
 import uuid
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any
 
 from app.kt_tracker.graph_sync import MicrosoftGraphSyncService
@@ -14,6 +16,7 @@ from app.kt_tracker.models import (
     KtMeeting,
     KtPlan,
     KtPlanImportRequest,
+    KtPlanUpdateRequest,
     KtReadiness,
     KtSummaryResponse,
     MeetingAnalysisResult,
@@ -21,6 +24,8 @@ from app.kt_tracker.models import (
 
 PLAN_STORE: dict[str, KtPlan] = {}
 _activity_id_sequence = itertools.count(1)
+DEMO_PLAN_IDS: set[str] = set()
+DEMO_DATA_PATH = Path(__file__).resolve().parents[2] / "demo_data.json"
 
 
 def _now_date() -> date:
@@ -55,83 +60,25 @@ def _activity_counts(activities: list[KtActivity]) -> dict[str, int]:
     return counts
 
 
-def _seed_demo_data() -> None:
-    if PLAN_STORE:
-        return
-
-    plan = KtPlan(
-        plan_id="kt-plan-demo-001",
-        project_name="Core Platform Transition",
-        knowledge_domain="transition",
-        due_date=date(2026, 12, 31),
-        owner="KT Office",
-        status="active",
-        activities=[
-            KtActivity(
-                activity_id="act-1001",
-                plan_id="kt-plan-demo-001",
-                activity_name="Kickoff & scope signoff",
-                description="Finalize transition scope and responsibilities.",
-                owner="PMO",
-                assignee="A. Singh",
-                category="planning",
-                status="completed",
-                readiness="ready",
-                due_date=date(2026, 1, 10),
-                actual_end_date=date(2026, 1, 9),
-                progress_percent=100,
-            ),
-            KtActivity(
-                activity_id="act-1002",
-                plan_id="kt-plan-demo-001",
-                activity_name="Role-based access provisioning",
-                description="Grant application access for support and operations teams.",
-                owner="IAM",
-                assignee="R. Kumar",
-                category="access",
-                status="in_progress",
-                readiness="partially_ready",
-                due_date=date(2026, 2, 15),
-                actual_start_date=date(2026, 1, 18),
-                progress_percent=65,
-                blocker="Waiting on final approval matrix.",
-                risk="Access delay may impact go-live.",
-            ),
-            KtActivity(
-                activity_id="act-1003",
-                plan_id="kt-plan-demo-001",
-                activity_name="Support runbook validation",
-                description="Validate runbooks with support leads and service owners.",
-                owner="Operations",
-                assignee="M. Patel",
-                category="operations",
-                status="overdue",
-                readiness="at_risk",
-                due_date=date(2026, 1, 25),
-                actual_start_date=date(2026, 1, 12),
-                progress_percent=40,
-                blocker="Runbook feedback still pending from service owners.",
-                risk="Operational readiness may be delayed.",
-            ),
-            KtActivity(
-                activity_id="act-1004",
-                plan_id="kt-plan-demo-001",
-                activity_name="Knowledge transfer workshop",
-                description="Deliver final hands-on KT sessions to support teams.",
-                owner="Knowledge Lead",
-                assignee="S. Lee",
-                category="knowledge",
-                status="planned",
-                readiness="not_assessed",
-                due_date=date(2026, 3, 5),
-                progress_percent=20,
-            ),
-        ],
-    )
-    PLAN_STORE[plan.plan_id] = plan
+def load_demo_data() -> list[KtPlan]:
+    """Load the optional local demo plans only when explicitly requested."""
+    payload = json.loads(DEMO_DATA_PATH.read_text(encoding="utf-8"))
+    loaded_plans = []
+    for plan_data in payload.get("plans", []):
+        plan = import_kt_plan(KtPlanImportRequest.model_validate(plan_data))
+        DEMO_PLAN_IDS.add(plan.plan_id)
+        loaded_plans.append(plan)
+    return loaded_plans
 
 
-_seed_demo_data()
+def clear_demo_data() -> int:
+    """Remove only plans loaded from the local demo file."""
+    deleted_count = 0
+    for plan_id in list(DEMO_PLAN_IDS):
+        if PLAN_STORE.pop(plan_id, None) is not None:
+            deleted_count += 1
+    DEMO_PLAN_IDS.clear()
+    return deleted_count
 
 
 def import_kt_plan(payload: KtPlanImportRequest) -> KtPlan:
@@ -157,6 +104,15 @@ def import_kt_plan(payload: KtPlanImportRequest) -> KtPlan:
             risk=item_data.get("risk") or "",
             notes=item_data.get("notes") or "",
             source=item_data.get("source") or "kt_planner_api",
+            source_transition_id=(
+                item_data.get("source_transition_id") or payload.source_transition_id
+            ),
+            source_session_id=item_data.get("source_session_id"),
+            source_knowledge_node_id=item_data.get("source_knowledge_node_id"),
+            source_stakeholder_id=item_data.get("source_stakeholder_id"),
+            contract_version=(
+                item_data.get("contract_version") or payload.contract_version
+            ),
             expected_topics=item_data.get("expected_topics") or [],
         )
         activities.append(activity)
@@ -168,10 +124,31 @@ def import_kt_plan(payload: KtPlanImportRequest) -> KtPlan:
         due_date=payload.due_date,
         owner=payload.owner,
         status="active",
+        source_transition_id=payload.source_transition_id,
+        contract_version=payload.contract_version,
         activities=activities,
     )
     PLAN_STORE[plan.plan_id] = plan
     return plan
+
+
+def get_all_plans() -> list[KtPlan]:
+    return list(PLAN_STORE.values())
+
+
+def update_plan(plan_id: str, payload: KtPlanUpdateRequest) -> KtPlan:
+    plan = PLAN_STORE.get(plan_id)
+    if plan is None:
+        raise KeyError(f"KT plan {plan_id} was not found.")
+    for field_name, value in payload.model_dump(exclude_none=True).items():
+        setattr(plan, field_name, value)
+    return plan
+
+
+def delete_plan(plan_id: str) -> bool:
+    deleted = PLAN_STORE.pop(plan_id, None) is not None
+    DEMO_PLAN_IDS.discard(plan_id)
+    return deleted
 
 
 def get_all_activities(plan_id: str | None = None) -> list[KtActivity]:
@@ -214,6 +191,11 @@ def create_activity(plan_id: str, payload: KtActivityCreateRequest) -> KtActivit
         risk=item_data.get("risk") or "",
         notes=item_data.get("notes") or "",
         source=item_data.get("source") or "bot_api",
+        source_transition_id=item_data.get("source_transition_id"),
+        source_session_id=item_data.get("source_session_id"),
+        source_knowledge_node_id=item_data.get("source_knowledge_node_id"),
+        source_stakeholder_id=item_data.get("source_stakeholder_id"),
+        contract_version=item_data.get("contract_version"),
         expected_topics=item_data.get("expected_topics") or [],
     )
     plan.activities.append(activity)
@@ -394,6 +376,9 @@ def upsert_activity_from_meeting(
         progress_percent=0,
         source="ms365_graph_sync",
         expected_topics=list(default_expected_topics or []),
+        source_transition_id=plan.source_transition_id,
+        source_session_id=meeting.source_session_id,
+        contract_version=meeting.contract_version or plan.contract_version,
         external_meeting_id=meeting.external_meeting_id,
         meeting_subject=meeting.subject,
         meeting_start=meeting.start_time,

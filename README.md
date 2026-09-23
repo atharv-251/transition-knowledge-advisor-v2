@@ -55,7 +55,11 @@ This repository is now focused on the KT Tracker Bot, a governed AI service for 
 - `POST /api/v1/kt-tracker/meetings/sync` - on-demand trigger for the automated Outlook/Teams sync
 - `GET /api/v1/kt-tracker/meetings` - meetings discovered from Outlook/Teams
 - `GET /api/v1/kt-tracker/activities/{activity_id}/analysis` - the AI transcript/attendance analysis behind an activity's status
+- `GET /api/v1/kt-tracker/activities/{activity_id}/analysis` - the AI transcript/attendance analysis behind an activity's status
 - `POST /api/v1/kt-scheduler/run` - parse CSV/XLSX KT schedule input and generate/send SMTP `.ics` meeting invitations
+- `GET /api/v1/transitions`, `GET /api/v1/transitions/latest`, `GET /api/v1/transitions/{id}` - transition documents (master plan/schedule/availability) backing the Transition Workspace UI
+- `POST /api/v1/transitions/upload` - upload a new transition's master plan/schedule documents
+- `POST /api/v1/transitions/{id}/teams-transcript` - attach a Teams transcript file to a transition
 
 ## KT Scheduler Bot
 
@@ -67,6 +71,18 @@ all invites to `appsupport@vwgds.in` and sends nothing unless explicitly
 requested.
 
 See `docs/KT_SCHEDULER.md` for configuration and run/test commands.
+
+## Transition Workspace UI
+
+A lightweight browser dashboard is served at `/` (`app/static/index.html`,
+`app.js`, `styles.css`) backed by the `/api/v1/transitions*` endpoints and
+`app/kt_tracker/transition_documents.py`. It lets you upload or select a
+transition and browse its master plan, schedule, and availability tables in
+one place, with pagination and summary tiles (topic count, session count,
+capacity, approval status). `app/kt_tracker/transition_documents.py` currently
+reads local `Transition_Docs` files as a stand-in for the KT Planner bot's
+output - see `docs/KT_PLANNER_COMPATIBILITY.md` for the field-mapping contract
+that keeps this additive and forward-compatible with the real KT Planner API.
 
 ## Automated Microsoft 365 KT lifecycle
 

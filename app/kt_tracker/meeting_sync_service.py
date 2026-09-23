@@ -148,6 +148,7 @@ def _to_participants(records: list[dict]) -> list[MeetingParticipant]:
             left_at = _safe_parse(intervals[-1].get("leaveDateTime"))
         participants.append(
             MeetingParticipant(
+                participant_id=identity.get("id") or None,
                 name=record.get("identity", {}).get("displayName") or identity.get("displayName") or "Unknown",
                 email=identity.get("id") or "",
                 role=record.get("role", "attendee") if record.get("role") in ("organizer", "attendee") else "attendee",

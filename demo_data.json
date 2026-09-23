@@ -1,0 +1,83 @@
+{
+  "plans": [
+    {
+      "plan_id": "kt-plan-demo-001",
+      "project_name": "Core Platform Transition",
+      "knowledge_domain": "transition",
+      "due_date": "2026-12-31",
+      "owner": "KT Office",
+      "status": "active",
+      "activities": [
+        {
+          "activity_id": "act-1001",
+          "activity_name": "Kickoff & scope signoff",
+          "description": "Finalize transition scope and responsibilities.",
+          "owner": "PMO",
+          "assignee": "A. Singh",
+          "category": "planning",
+          "status": "completed",
+          "readiness": "ready",
+          "due_date": "2026-01-10",
+          "actual_end_date": "2026-01-09",
+          "progress_percent": 100
+        },
+        {
+          "activity_id": "act-1002",
+          "activity_name": "Role-based access provisioning",
+          "description": "Grant application access for support and operations teams.",
+          "owner": "IAM",
+          "assignee": "R. Kumar",
+          "category": "access",
+          "status": "in_progress",
+          "readiness": "partially_ready",
+          "due_date": "2026-02-15",
+          "actual_start_date": "2026-01-18",
+          "progress_percent": 65,
+          "blocker": "Waiting on final approval matrix.",
+          "risk": "Access delay may impact go-live."
+        },
+        {
+          "activity_id": "act-1003",
+          "activity_name": "Support runbook validation",
+          "description": "Validate runbooks with support leads and service owners.",
+          "owner": "Operations",
+          "assignee": "M. Patel",
+          "category": "operations",
+          "status": "overdue",
+          "readiness": "at_risk",
+          "due_date": "2026-01-25",
+          "actual_start_date": "2026-01-12",
+          "progress_percent": 40,
+          "blocker": "Runbook feedback still pending from service owners.",
+          "risk": "Operational readiness may be delayed."
+        },
+        {
+          "activity_id": "act-1004",
+          "activity_name": "Knowledge transfer workshop",
+          "description": "Deliver final hands-on KT sessions to support teams.",
+          "owner": "Knowledge Lead",
+          "assignee": "S. Lee",
+          "category": "knowledge",
+          "status": "planned",
+          "readiness": "not_assessed",
+          "due_date": "2026-03-05",
+          "progress_percent": 20
+        }
+      ]
+    }
+  ],
+  "meetings": [
+    {
+      "external_meeting_id": "demo-meeting-001",
+      "graph_event_id": "",
+      "subject": "Core Platform KT Session",
+      "organizer_name": "KT Office",
+      "organizer_email": "",
+      "start_time": "2026-02-20T09:00:00",
+      "end_time": "2026-02-20T10:00:00",
+      "status": "scheduled",
+      "plan_id": "kt-plan-demo-001",
+      "activity_id": "act-1004"
+    }
+  ]
+}

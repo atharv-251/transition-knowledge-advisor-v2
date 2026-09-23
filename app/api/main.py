@@ -1,9 +1,14 @@
 import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path as FilePath
 from typing import Annotated
+from uuid import uuid4
 
-from fastapi import Body, FastAPI, HTTPException, Path, Query, status
+from fastapi import Body, FastAPI, File, Form, HTTPException, Path, Query, UploadFile, status
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.database.sql_connection import database_connection
 from app.kt_scheduler.models import ScheduleRunRequest, ScheduleRunResult
@@ -17,8 +22,12 @@ from app.kt_tracker.models import (
     KtActivity,
     KtActivityCreateRequest,
     KtMeeting,
+    KtMeetingCreateRequest,
+    KtMeetingUpdateRequest,
+    KtPlan,
     KtPlanImportRequest,
     KtPlanImportResponse,
+    KtPlanUpdateRequest,
     KtSummaryResponse,
     MeetingAnalysisResult,
     MeetingSyncResult,
@@ -28,19 +37,34 @@ from app.kt_tracker.scheduler import scheduler
 from app.kt_tracker.service import (
     create_activity,
     delete_activity,
+    delete_plan,
     detect_overdue_activities,
     generate_status_summary,
     get_activity,
     get_all_activities,
+    get_all_plans,
     import_kt_plan,
+    load_demo_data,
+    clear_demo_data,
     sync_with_graph,
     update_activity,
+    update_plan,
+)
+from app.kt_tracker.transition_documents import (
+    get_transition,
+    latest_transition_id,
+    list_transitions,
+    save_teams_transcript,
+    save_uploaded_transition,
 )
 
 logger = logging.getLogger("kt_tracker.api")
 AGENT_ID = "kt-tracker-bot"
 AGENT_VERSION = "0.1.0"
 API_BUILD = "kt-tracker-bot-2026-09-17"
+STATIC_DIR = FilePath(__file__).resolve().parents[1] / "static"
+DEMO_DATA_PATH = FilePath(__file__).resolve().parents[2] / "demo_data.json"
+DEMO_MEETING_IDS: set[str] = set()
 
 TAGS_METADATA = [
     {
@@ -147,6 +171,96 @@ app = FastAPI(
         "persistAuthorization": True,
     },
 )
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/", include_in_schema=False)
+async def demo_data_manager() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get(
+    "/api/v1/transitions",
+    tags=["KT Plans"],
+    summary="List local KT Planner transition folders",
+)
+async def list_local_transitions() -> list[dict[str, str]]:
+    return list_transitions()
+
+
+@app.get(
+    "/api/v1/transitions/latest",
+    tags=["KT Plans"],
+    summary="Read the latest uploaded transition documents",
+)
+async def get_latest_local_transition() -> dict[str, object]:
+    transition_id = latest_transition_id()
+    if transition_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No transition documents found.")
+    return get_transition(transition_id)
+
+
+@app.get(
+    "/api/v1/transitions/{transition_id}",
+    tags=["KT Plans"],
+    summary="Read a local KT Planner master plan and schedule",
+)
+async def get_local_transition(
+    transition_id: Annotated[str, Path(min_length=1)],
+) -> dict[str, object]:
+    try:
+        return get_transition(transition_id)
+    except KeyError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
+
+
+@app.post(
+    "/api/v1/transitions/upload",
+    tags=["KT Plans"],
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload a Planner transition document package",
+)
+async def upload_local_transition(
+    transition_name: Annotated[str, Form(min_length=1, max_length=200)],
+    master_plan: Annotated[UploadFile, File(description="KT Planner .xlsx master plan")],
+    schedule: Annotated[UploadFile, File(description="KT Planner .csv schedule")],
+) -> dict[str, object]:
+    try:
+        saved = save_uploaded_transition(
+            transition_name=transition_name,
+            master_plan_name=master_plan.filename or "",
+            master_plan_content=await master_plan.read(),
+            schedule_name=schedule.filename or "",
+            schedule_content=await schedule.read(),
+        )
+        return {"uploaded": saved, "transition": get_transition(saved["id"])}
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
+
+
+@app.post(
+    "/api/v1/transitions/{transition_id}/teams-transcript",
+    tags=["KT Plans"],
+    status_code=status.HTTP_201_CREATED,
+    summary="Attach a Teams transcript to an uploaded transition",
+)
+async def upload_teams_transcript(
+    transition_id: Annotated[str, Path(min_length=1)],
+    teams_transcript: Annotated[UploadFile, File(description="Teams .vtt transcript")],
+) -> dict[str, object]:
+    try:
+        filename = save_teams_transcript(
+            transition_name=transition_id,
+            transcript_name=teams_transcript.filename or "",
+            transcript_content=await teams_transcript.read(),
+        )
+        return {"teams_transcript": filename, "transition": get_transition(transition_id)}
+    except KeyError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
 
 
 @app.get(
@@ -319,8 +433,48 @@ async def import_tracker_plan(
         plan_id=plan.plan_id,
         project_name=plan.project_name,
         knowledge_domain=plan.knowledge_domain,
+        source_transition_id=plan.source_transition_id,
+        contract_version=plan.contract_version,
         activities=plan.activities,
     )
+
+
+
+@app.get(
+    "/api/v1/kt-tracker/plans",
+    response_model=list[KtPlan],
+    tags=["KT Plans"],
+    summary="List KT plans",
+)
+async def list_tracker_plans() -> list[KtPlan]:
+    return get_all_plans()
+
+
+@app.put(
+    "/api/v1/kt-tracker/plans/{plan_id}",
+    response_model=KtPlan,
+    tags=["KT Plans"],
+    summary="Update a demo KT plan",
+)
+async def update_tracker_plan(
+    plan_id: Annotated[str, Path(min_length=1)],
+    payload: KtPlanUpdateRequest,
+) -> KtPlan:
+    try:
+        return update_plan(plan_id, payload)
+    except KeyError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+
+
+@app.delete(
+    "/api/v1/kt-tracker/plans/{plan_id}",
+    tags=["KT Plans"],
+    summary="Delete a demo KT plan",
+)
+async def delete_tracker_plan(plan_id: Annotated[str, Path(min_length=1)]) -> dict[str, object]:
+    if not delete_plan(plan_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="KT plan not found.")
+    return {"deleted": True, "plan_id": plan_id}
 
 
 @app.post(
@@ -620,6 +774,89 @@ async def kt_tracker_meetings_sync(
 )
 async def kt_tracker_list_meetings() -> list[KtMeeting]:
     return list(MEETING_STORE.values())
+
+
+@app.post(
+    "/api/v1/kt-tracker/meetings",
+    response_model=KtMeeting,
+    tags=["KT Meetings"],
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a local demo KT meeting",
+)
+async def create_tracker_meeting(payload: KtMeetingCreateRequest) -> KtMeeting:
+    meeting = KtMeeting(
+        external_meeting_id=f"demo-meeting-{uuid4()}",
+        subject=payload.subject,
+        organizer_name=payload.organizer_name,
+        start_time=payload.start_time,
+        end_time=payload.end_time,
+        plan_id=payload.plan_id,
+        activity_id=payload.activity_id,
+    )
+    MEETING_STORE[meeting.external_meeting_id] = meeting
+    return meeting
+
+
+@app.put(
+    "/api/v1/kt-tracker/meetings/{meeting_id}",
+    response_model=KtMeeting,
+    tags=["KT Meetings"],
+    summary="Update a local demo KT meeting",
+)
+async def update_tracker_meeting(
+    meeting_id: Annotated[str, Path(min_length=1)],
+    payload: KtMeetingUpdateRequest,
+) -> KtMeeting:
+    meeting = MEETING_STORE.get(meeting_id)
+    if meeting is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="KT meeting not found.")
+    for field_name, value in payload.model_dump(exclude_none=True).items():
+        setattr(meeting, field_name, value)
+    return meeting
+
+
+@app.delete(
+    "/api/v1/kt-tracker/meetings/{meeting_id}",
+    tags=["KT Meetings"],
+    summary="Delete a local demo KT meeting",
+)
+async def delete_tracker_meeting(meeting_id: Annotated[str, Path(min_length=1)]) -> dict[str, object]:
+    if MEETING_STORE.pop(meeting_id, None) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="KT meeting not found.")
+    DEMO_MEETING_IDS.discard(meeting_id)
+    return {"deleted": True, "meeting_id": meeting_id}
+
+
+@app.post(
+    "/api/v1/kt-tracker/demo/load",
+    tags=["Demo Data"],
+    summary="Load local demo KT data",
+)
+async def load_tracker_demo_data() -> dict[str, int]:
+    plans = load_demo_data()
+    payload = json.loads(DEMO_DATA_PATH.read_text(encoding="utf-8"))
+    meetings_loaded = 0
+    for meeting_data in payload.get("meetings", []):
+        meeting = KtMeeting.model_validate(meeting_data)
+        MEETING_STORE[meeting.external_meeting_id] = meeting
+        DEMO_MEETING_IDS.add(meeting.external_meeting_id)
+        meetings_loaded += 1
+    return {"plans_loaded": len(plans), "meetings_loaded": meetings_loaded}
+
+
+@app.post(
+    "/api/v1/kt-tracker/demo/clear",
+    tags=["Demo Data"],
+    summary="Clear only loaded demo KT data",
+)
+async def clear_tracker_demo_data() -> dict[str, int]:
+    plans_cleared = clear_demo_data()
+    meetings_cleared = 0
+    for meeting_id in list(DEMO_MEETING_IDS):
+        if MEETING_STORE.pop(meeting_id, None) is not None:
+            meetings_cleared += 1
+    DEMO_MEETING_IDS.clear()
+    return {"plans_cleared": plans_cleared, "meetings_cleared": meetings_cleared}
 
 
 @app.get(

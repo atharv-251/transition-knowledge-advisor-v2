@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KT Tracker</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><p class="eyebrow">Transition workspace</p><h1>KT Tracker</h1></div>
+    <div class="header-controls"><span id="current-transition-label" class="latest-label">No transition selected</span><span id="health-status" class="health pending">Checking health</span></div>
+  </header>
+  <main>
+    <nav class="workspace-nav" aria-label="Transition workspace navigation"><button class="workspace-nav-button active" type="button" data-workspace-view="current">Current transition</button><button class="workspace-nav-button" type="button" data-workspace-view="upload">Upload a transition</button><button class="workspace-nav-button" type="button" data-workspace-view="select">Select transitions</button></nav>
+    <section id="upload-transition-panel" class="upload-panel workspace-panel" aria-labelledby="upload-title" hidden>
+      <div class="upload-intro"><p class="eyebrow">Document intake</p><h2 id="upload-title">Upload a transition package</h2><p>Upload the Planner Master Plan and Schedule to create a transition workspace. Attach a Teams Transcript <code>.vtt</code> file from the selected transition afterward.</p></div>
+      <form id="upload-form" class="upload-form">
+        <label>Transition name<input name="transition_name" placeholder="For example, Test AA" required maxlength="200"></label>
+        <label>Master Plan <input name="master_plan" type="file" accept=".xlsx" required><small>.xlsx from KT Planner</small></label>
+        <label>Schedule <input name="schedule" type="file" accept=".csv" required><small>.csv from KT Planner</small></label>
+        <button class="upload-button" type="submit">Upload transition</button>
+      </form>
+    </section>
+    <section id="transition-list-panel" class="workspace-panel" hidden><div class="section-title"><div><p class="eyebrow">Transition library</p><h2>Uploaded transitions</h2></div></div><div id="transition-list" class="transition-list"></div></section>
+    <section id="empty-state" class="empty-state workspace-panel" hidden><p class="eyebrow">No uploaded transition</p><h2>Upload a transition package to begin</h2><p>The latest uploaded Master Plan and Schedule will appear here.</p></section>
+    <section id="workspace" class="workspace-panel" hidden>
+      <section class="transition-hero"><div><p class="eyebrow">Selected transition</p><h2 id="transition-name">-</h2><p id="transition-window" class="subtle">-</p></div><div class="document-files"><span>Master Plan <strong id="master-plan-file">-</strong></span><span>Schedule <strong id="schedule-file">-</strong></span><span>Teams Transcripts <strong id="teams-transcript-file">Not attached</strong></span></div></section>
+      <section class="transcript-panel" aria-labelledby="transcript-title"><div><p class="eyebrow">Teams Transcripts</p><h3 id="transcript-title">Attach a meeting transcript</h3><p>Save a <code>.vtt</code> transcript to this selected transition.</p></div><form id="teams-transcript-form" class="transcript-form"><label>Teams transcript <input name="teams_transcript" type="file" accept=".vtt" required><small>.vtt file</small></label><button class="upload-button" type="submit">Upload transcript</button></form></section>
+      <section class="stats" aria-label="Transition metrics"><article><span>Topics</span><strong id="topic-count">0</strong><small>Master plan entries</small></article><article><span>Sessions</span><strong id="session-count">0</strong><small>Scheduled KT sessions</small></article><article><span>KT capacity</span><strong id="capacity-value">-</strong><small>Generated topic capacity</small></article><article><span>Approval</span><strong id="approval-value">-</strong><small>Planner approval status</small></article></section>
+      <nav class="tabs" aria-label="Transition views"><button class="tab active" type="button" data-view="overview">Overview</button><button class="tab" type="button" data-view="master-plan">Master Plan</button><button class="tab" type="button" data-view="schedule">Schedule</button><button class="tab" type="button" data-view="calendar">Calendar</button><button class="tab" type="button" data-view="validation">Validation</button></nav>
+      <section class="view active" data-panel="overview"><div class="section-title"><div><p class="eyebrow">Master plan</p><h3>Transition summary</h3></div></div><div id="summary-grid" class="summary-grid"></div><div class="section-title split"><div><p class="eyebrow">Availability</p><h3>Working days</h3></div></div><div class="table-shell"><table><thead><tr><th>Date</th><th>Day</th><th>Calendar status</th><th>Reason</th><th>Assigned sessions</th></tr></thead><tbody id="availability-body"></tbody></table></div></section>
+      <section class="view" data-panel="master-plan" hidden><div class="section-title"><div><p class="eyebrow">Master plan</p><h3>Knowledge hierarchy</h3></div><span id="master-plan-records" class="record-count"></span></div><div class="table-shell"><table><thead><tr><th>Level</th><th>Topic / subtopic</th><th>Category</th><th>Est. hours</th><th>Delivery</th><th>Weight</th></tr></thead><tbody id="master-plan-body"></tbody></table></div><div id="master-plan-pagination" class="pagination"></div></section>
+      <section class="view" data-panel="schedule" hidden><div class="section-title"><div><p class="eyebrow">Schedule</p><h3>KT sessions</h3></div><span id="schedule-records" class="record-count"></span></div><div class="table-shell"><table><thead><tr><th>Session</th><th>Level</th><th>Date</th><th>Time</th><th>Duration</th><th>Mode</th><th>SME</th><th>Receiver</th><th>Status</th></tr></thead><tbody id="schedule-body"></tbody></table></div><div id="schedule-pagination" class="pagination"></div></section>
+      <section class="view" data-panel="calendar" hidden><div class="section-title"><div><p class="eyebrow">Schedule</p><h3>Session calendar</h3></div><span class="record-count">Sessions grouped by scheduled day</span></div><div id="calendar-grid" class="calendar-grid"></div></section>
+      <section class="view" data-panel="validation" hidden><div class="section-title"><div><p class="eyebrow">Governance</p><h3>Validation report</h3></div></div><div class="table-shell"><table><thead><tr><th>Check</th><th>Category</th><th>Result</th><th>Severity</th><th>Compliance message</th></tr></thead><tbody id="validation-body"></tbody></table></div></section>
+    </section>
+  </main>
+  <div id="notice" class="notice" role="status" aria-live="polite"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

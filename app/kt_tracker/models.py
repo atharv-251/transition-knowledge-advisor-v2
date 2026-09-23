@@ -154,6 +154,27 @@ class KtActivityCreateRequest(BaseModel):
         max_length=100,
         description="Source system for the activity.",
     )
+    source_transition_id: str | None = Field(
+        default=None,
+        description="Optional KT Planner Transition ID that originated this activity.",
+    )
+    source_session_id: str | None = Field(
+        default=None,
+        description="Optional KT Planner KT Session ID linked to this activity.",
+    )
+    source_knowledge_node_id: str | None = Field(
+        default=None,
+        description="Optional KT Planner Knowledge Node ID covered by this activity.",
+    )
+    source_stakeholder_id: str | None = Field(
+        default=None,
+        description="Optional KT Planner Stakeholder ID for the activity owner or receiver.",
+    )
+    contract_version: str | None = Field(
+        default=None,
+        max_length=50,
+        description="Optional version of the KT Planner integration contract.",
+    )
     expected_topics: list[str] = Field(
         default_factory=list,
         description=(
@@ -212,6 +233,15 @@ class KtPlanImportRequest(BaseModel):
         description="Overall plan owner.",
         examples=["KT Office"],
     )
+    source_transition_id: str | None = Field(
+        default=None,
+        description="Optional KT Planner Transition ID that originated this plan.",
+    )
+    contract_version: str | None = Field(
+        default=None,
+        max_length=50,
+        description="Optional version of the KT Planner integration contract.",
+    )
     activities: list[KtActivityCreateRequest] = Field(
         default_factory=list,
         description="Activities imported from the KT Planner plan.",
@@ -247,6 +277,12 @@ class KtPlanImportRequest(BaseModel):
 class ActivityUpdateRequest(BaseModel):
     """Partial update payload for activity status, progress, blockers, and readiness."""
 
+    activity_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=300,
+        description="Updated activity name.",
+    )
     status: KtStatus | None = Field(
         default=None,
         description="New activity status.",
@@ -255,6 +291,11 @@ class ActivityUpdateRequest(BaseModel):
         default=None,
         max_length=200,
         description="Updated owning team or role.",
+    )
+    assignee: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Updated person or group currently responsible.",
     )
     due_date: date | None = Field(
         default=None,
@@ -309,6 +350,10 @@ class ActivityUpdateRequest(BaseModel):
 class MeetingParticipant(BaseModel):
     """One participant recorded on a Teams meeting, from Graph attendance data."""
 
+    participant_id: str | None = Field(
+        default=None,
+        description="Stable Microsoft Graph user ID, if supplied by attendance data.",
+    )
     name: str = Field(description="Participant display name.")
     email: str = Field(default="", description="Participant email/UPN, if available.")
     role: MeetingParticipantRole = Field(
@@ -352,6 +397,11 @@ class KtActivity(BaseModel):
     risk: str = ""
     notes: str = ""
     source: str = "kt_planner_api"
+    source_transition_id: str | None = None
+    source_session_id: str | None = None
+    source_knowledge_node_id: str | None = None
+    source_stakeholder_id: str | None = None
+    contract_version: str | None = None
 
     # --- Expected KT content for this activity's meeting(s) ---
     expected_topics: list[str] = Field(
@@ -428,7 +478,19 @@ class KtPlan(BaseModel):
     due_date: date | None = None
     owner: str = ""
     status: str = "draft"
+    source_transition_id: str | None = None
+    contract_version: str | None = None
     activities: list[KtActivity] = Field(default_factory=list)
+
+
+class KtPlanUpdateRequest(BaseModel):
+    """Partial update payload for a demo KT plan."""
+
+    project_name: str | None = Field(default=None, min_length=1, max_length=300)
+    knowledge_domain: str | None = Field(default=None, max_length=100)
+    due_date: date | None = None
+    owner: str | None = Field(default=None, max_length=200)
+    status: str | None = Field(default=None, max_length=100)
 
 
 class KtPlanImportResponse(BaseModel):
@@ -437,6 +499,8 @@ class KtPlanImportResponse(BaseModel):
     plan_id: str
     project_name: str
     knowledge_domain: str
+    source_transition_id: str | None = None
+    contract_version: str | None = None
     activities: list[KtActivity] = Field(default_factory=list)
 
 
@@ -494,7 +558,40 @@ class KtMeeting(BaseModel):
     activity_id: str | None = Field(
         default=None, description="Linked KT activity ID once upserted."
     )
+    source_transition_id: str | None = Field(
+        default=None,
+        description="Optional KT Planner Transition ID linked to this session.",
+    )
+    source_session_id: str | None = Field(
+        default=None,
+        description="Optional KT Planner KT Session ID represented by this meeting.",
+    )
+    contract_version: str | None = Field(
+        default=None,
+        description="Optional version of the KT Planner integration contract.",
+    )
     last_synced_at: datetime | None = None
+
+
+class KtMeetingCreateRequest(BaseModel):
+    """Payload used to add a local demo KT meeting."""
+
+    subject: str = Field(min_length=1, max_length=300)
+    organizer_name: str = Field(default="", max_length=200)
+    start_time: datetime
+    end_time: datetime
+    plan_id: str | None = None
+    activity_id: str | None = None
+
+
+class KtMeetingUpdateRequest(BaseModel):
+    """Partial update payload for a local demo KT meeting."""
+
+    subject: str | None = Field(default=None, min_length=1, max_length=300)
+    organizer_name: str | None = Field(default=None, max_length=200)
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    activity_id: str | None = None
 
 
 class MeetingAnalysisResult(BaseModel):
