@@ -26,6 +26,7 @@ def run_scheduler(
     test_mode: bool | None = None,
     test_recipients: list[str] | None = None,
     force_resend: bool = False,
+    max_invites_per_recipient: int | None = None,
     scheduler_config: SchedulerConfig | None = None,
     smtp_config: SmtpConfig | None = None,
 ) -> ScheduleRunResult:
@@ -64,10 +65,28 @@ def run_scheduler(
         valid_items=len(items),
         test_mode=scheduler_config.test_mode,
     )
+    attempted_recipient_counts: dict[str, int] = {}
 
     for item in items:
         uid, ics_content = build_ics(item, smtp_config)
         recipients = _resolve_recipients(item, scheduler_config)
+        if max_invites_per_recipient is not None:
+            recipients = [
+                recipient
+                for recipient in recipients
+                if attempted_recipient_counts.get(recipient.lower(), 0) < max_invites_per_recipient
+            ]
+            if not recipients:
+                result.skipped += 1
+                result.results.append(InviteResult(
+                    source_id=item.source_id,
+                    uid=uid,
+                    subject=item.session_title,
+                    recipients=[],
+                    status="skipped",
+                    message="Test invite limit reached for all recipients.",
+                ))
+                continue
         state_key = _delivery_state_key(uid, recipients)
 
         if state_key in already_sent and not force_resend:
@@ -82,6 +101,12 @@ def run_scheduler(
                 message="Invite UID already exists in scheduler state.",
             ))
             continue
+
+        for recipient in recipients:
+            normalized_recipient = recipient.lower()
+            attempted_recipient_counts[normalized_recipient] = (
+                attempted_recipient_counts.get(normalized_recipient, 0) + 1
+            )
 
         try:
             invite_service.send_invite(

@@ -129,6 +129,12 @@ def _document_paths(transition_name: str) -> tuple[Path, Path]:
     return master_plans[0], schedules[0]
 
 
+def transition_schedule_path(transition_name: str) -> Path:
+    """Return the validated Schedule CSV belonging to a transition."""
+    _, schedule_path = _document_paths(transition_name)
+    return schedule_path
+
+
 def list_transitions() -> list[dict[str, str]]:
     root = transitions_root()
     if not root.is_dir():

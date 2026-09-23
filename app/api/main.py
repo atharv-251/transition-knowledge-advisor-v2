@@ -56,6 +56,7 @@ from app.kt_tracker.transition_documents import (
     list_transitions,
     save_teams_transcript,
     save_uploaded_transition,
+    transition_schedule_path,
 )
 
 logger = logging.getLogger("kt_tracker.api")
@@ -261,6 +262,41 @@ async def upload_teams_transcript(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
+
+
+@app.post(
+    "/api/v1/transitions/{transition_id}/send-test-invites",
+    response_model=ScheduleRunResult,
+    tags=["KT Scheduler"],
+    summary="Send one test invitation per configured recipient",
+    description=(
+        "Uses the selected transition's saved Schedule CSV. Test mode is "
+        "always enabled and each configured test recipient receives at most "
+        "one invitation, even when the schedule contains multiple meetings."
+    ),
+)
+async def send_transition_test_invites(
+    transition_id: Annotated[str, Path(min_length=1)],
+    payload: Annotated[
+        ScheduleRunRequest,
+        Body(description="Optional test-recipient overrides for this transition."),
+    ],
+) -> ScheduleRunResult:
+    try:
+        schedule_path = transition_schedule_path(transition_id)
+        return await asyncio.to_thread(
+            run_kt_scheduler,
+            schedule_path,
+            dry_run=False,
+            test_mode=True,
+            test_recipients=[str(recipient) for recipient in (payload.test_recipients or [])] or None,
+            force_resend=payload.force_resend,
+            max_invites_per_recipient=1,
+        )
+    except KeyError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
 
 @app.get(
