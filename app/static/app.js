@@ -60,12 +60,15 @@ function transitionRecipients() {
 }
 
 function renderSchedulerContext() {
+  const hasSchedule = Boolean(transition && transition.files.schedule);
   byId("scheduler-transition-name").textContent = transition ? transition.name : "Select a transition in KT Tracker";
-  byId("scheduler-schedule-file").textContent = transition ? transition.files.schedule : "No schedule loaded";
+  byId("scheduler-schedule-file").textContent = hasSchedule ? transition.files.schedule : (transition ? "No schedule uploaded yet" : "No schedule loaded");
   const recipients = transitionRecipients();
   byId("scheduler-recipients").value = recipients.join(", ");
-  byId("scheduler-recipient-summary").textContent = transition ? `${recipients.length} participant${recipients.length === 1 ? "" : "s"} loaded from this transition` : "No transition selected";
-  byId("scheduler-send-button").disabled = !transition;
+  byId("scheduler-recipient-summary").textContent = !transition ? "No transition selected" : !hasSchedule ? "Upload a schedule below to load participants" : `${recipients.length} participant${recipients.length === 1 ? "" : "s"} loaded from this transition`;
+  byId("scheduler-send-button").disabled = !hasSchedule;
+  byId("scheduler-upload-button").disabled = !transition;
+  byId("scheduler-upload-hint").hidden = Boolean(transition);
 }
 
 function renderSchedulerResult(result) {
@@ -81,7 +84,7 @@ function render() {
   byId("transition-name").textContent = transition.name;
   byId("transition-window").textContent = summary["Start & End Dates"] || "Transition documents loaded";
   byId("master-plan-file").textContent = transition.files.master_plan;
-  byId("schedule-file").textContent = transition.files.schedule;
+  byId("schedule-file").textContent = transition.files.schedule || "Not uploaded";
   byId("teams-transcript-file").textContent = transition.files.teams_transcript || "Not attached";
   byId("current-transition-label").textContent = transition.name;
   byId("topic-count").textContent = transition.master_plan.length;
@@ -117,9 +120,15 @@ async function init() {
 
 byId("upload-form").addEventListener("submit", async (event) => {
   event.preventDefault(); const button = event.target.querySelector("button"); button.disabled = true; button.textContent = "Uploading...";
-  try { const response = await fetch(`${API}/upload`, { method: "POST", body: new FormData(event.target) }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.detail || "Upload failed."); } const result = await response.json(); transition = result.transition; pageState["master-plan"] = 1; pageState.schedule = 1; render(); event.target.reset(); setWorkspaceView("current"); }
+  try { const response = await fetch(`${API}/master-plan`, { method: "POST", body: new FormData(event.target) }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.detail || "Upload failed."); } const result = await response.json(); transition = result.transition; pageState["master-plan"] = 1; pageState.schedule = 1; render(); event.target.reset(); setWorkspaceView("current"); }
   catch (error) { notify(error.message); }
   finally { button.disabled = false; button.textContent = "Upload transition"; }
+});
+byId("scheduler-upload-form").addEventListener("submit", async (event) => {
+  event.preventDefault(); if (!transition) { notify("Upload or select a transition in KT Tracker first."); return; } const button = byId("scheduler-upload-button"); button.disabled = true; button.textContent = "Uploading...";
+  try { const response = await fetch(`${API}/${encodeURIComponent(transition.id)}/schedule`, { method: "POST", body: new FormData(event.target) }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.detail || "Schedule upload failed."); } const result = await response.json(); transition = result.transition; pageState.schedule = 1; render(); event.target.reset(); notify("Schedule attached to this transition."); }
+  catch (error) { notify(error.message); }
+  finally { button.disabled = false; button.textContent = "Upload schedule"; }
 });
 byId("teams-transcript-form").addEventListener("submit", async (event) => {
   event.preventDefault(); if (!transition) return; const button = event.target.querySelector("button"); button.disabled = true; button.textContent = "Uploading...";

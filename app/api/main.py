@@ -54,8 +54,9 @@ from app.kt_tracker.transition_documents import (
     get_transition,
     latest_transition_id,
     list_transitions,
+    save_master_plan,
+    save_schedule,
     save_teams_transcript,
-    save_uploaded_transition,
     transition_schedule_path,
 )
 
@@ -218,25 +219,57 @@ async def get_local_transition(
 
 
 @app.post(
-    "/api/v1/transitions/upload",
+    "/api/v1/transitions/master-plan",
     tags=["KT Plans"],
     status_code=status.HTTP_201_CREATED,
-    summary="Upload a Planner transition document package",
+    summary="Upload a Planner Master Plan (creates or updates a KT Tracker transition)",
+    description=(
+        "Creates the transition workspace (or replaces its Master Plan if it "
+        "already exists) and marks it as the latest transition. The Schedule "
+        "is uploaded separately from the KT Scheduler tab once this workspace "
+        "exists."
+    ),
 )
-async def upload_local_transition(
+async def upload_transition_master_plan(
     transition_name: Annotated[str, Form(min_length=1, max_length=200)],
     master_plan: Annotated[UploadFile, File(description="KT Planner .xlsx master plan")],
-    schedule: Annotated[UploadFile, File(description="KT Planner .csv schedule")],
 ) -> dict[str, object]:
     try:
-        saved = save_uploaded_transition(
+        saved = save_master_plan(
             transition_name=transition_name,
             master_plan_name=master_plan.filename or "",
             master_plan_content=await master_plan.read(),
+        )
+        return {"uploaded": saved, "transition": get_transition(saved["id"])}
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
+
+
+@app.post(
+    "/api/v1/transitions/{transition_id}/schedule",
+    tags=["KT Scheduler"],
+    status_code=status.HTTP_201_CREATED,
+    summary="Attach a Planner Schedule to an existing transition",
+    description=(
+        "Attaches (or replaces) the Schedule CSV for a transition whose "
+        "Master Plan was already uploaded from KT Tracker. This is the "
+        "upload used by the KT Scheduler tab so invitations can be generated "
+        "from the same transition."
+    ),
+)
+async def upload_transition_schedule(
+    transition_id: Annotated[str, Path(min_length=1)],
+    schedule: Annotated[UploadFile, File(description="KT Planner .csv schedule")],
+) -> dict[str, object]:
+    try:
+        filename = save_schedule(
+            transition_name=transition_id,
             schedule_name=schedule.filename or "",
             schedule_content=await schedule.read(),
         )
-        return {"uploaded": saved, "transition": get_transition(saved["id"])}
+        return {"schedule": filename, "transition": get_transition(transition_id)}
+    except KeyError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
 

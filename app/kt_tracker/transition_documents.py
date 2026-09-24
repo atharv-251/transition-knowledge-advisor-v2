@@ -39,42 +39,65 @@ def _safe_filename(filename: str, expected_suffix: str) -> str:
     return name
 
 
-def save_uploaded_transition(
+def save_master_plan(
     *,
     transition_name: str,
     master_plan_name: str,
     master_plan_content: bytes,
-    schedule_name: str,
-    schedule_content: bytes,
 ) -> dict[str, str]:
-    """Save an uploaded Planner package and mark it as the latest transition."""
+    """Save (or replace) a transition's Planner Master Plan and mark it latest.
+
+    Creates the transition folder if it does not exist yet. The Schedule is
+    uploaded separately from the KT Scheduler tab (see save_schedule) once
+    this KT Tracker workspace exists.
+    """
     transition_id = _transition_id(transition_name)
     master_plan_filename = _safe_filename(master_plan_name, ".xlsx")
-    schedule_filename = _safe_filename(schedule_name, ".csv")
     root = transitions_root()
     transition_dir = root / transition_id
     master_plan_dir = transition_dir / "Master_Plan"
-    schedule_dir = transition_dir / "Schedule"
     master_plan_dir.mkdir(parents=True, exist_ok=True)
-    schedule_dir.mkdir(parents=True, exist_ok=True)
 
     for existing in _files(master_plan_dir, "*.xlsx"):
         existing.unlink()
-    for existing in _files(schedule_dir, "*.csv"):
-        existing.unlink()
     (master_plan_dir / master_plan_filename).write_bytes(master_plan_content)
-    (schedule_dir / schedule_filename).write_bytes(schedule_content)
 
     (root / LATEST_TRANSITION_FILE).write_text(
         json.dumps({"transition_id": transition_id}), encoding="utf-8"
     )
+    schedules = _files(transition_dir / "Schedule", "*.csv")
     return {
         "id": transition_id,
         "name": transition_name.strip(),
         "master_plan": master_plan_filename,
-        "schedule": schedule_filename,
+        "schedule": schedules[0].name if schedules else "",
         "teams_transcript": "",
     }
+
+
+def save_schedule(
+    *,
+    transition_name: str,
+    schedule_name: str,
+    schedule_content: bytes,
+) -> str:
+    """Attach (or replace) the Schedule CSV for an existing transition."""
+    root = transitions_root()
+    transition_dir = root / transition_name
+    if not transition_dir.is_dir() or transition_dir.parent != root:
+        raise KeyError(f"Transition {transition_name!r} was not found.")
+    if not _files(transition_dir / "Master_Plan", "*.xlsx"):
+        raise ValueError(
+            f"Upload the Master Plan for {transition_name!r} in KT Tracker "
+            "before attaching a Schedule."
+        )
+    schedule_filename = _safe_filename(schedule_name, ".csv")
+    schedule_dir = transition_dir / "Schedule"
+    schedule_dir.mkdir(parents=True, exist_ok=True)
+    for existing in _files(schedule_dir, "*.csv"):
+        existing.unlink()
+    (schedule_dir / schedule_filename).write_bytes(schedule_content)
+    return schedule_filename
 
 
 def save_teams_transcript(
@@ -113,7 +136,7 @@ def _files(directory: Path, pattern: str) -> list[Path]:
     return sorted(path for path in directory.glob(pattern) if not path.name.startswith("~$"))
 
 
-def _document_paths(transition_name: str) -> tuple[Path, Path]:
+def _document_paths(transition_name: str) -> tuple[Path, Path | None]:
     root = transitions_root()
     transition_dir = root / transition_name
     if not transition_dir.is_dir() or transition_dir.parent != root:
@@ -121,17 +144,22 @@ def _document_paths(transition_name: str) -> tuple[Path, Path]:
 
     master_plans = _files(transition_dir / "Master_Plan", "*.xlsx")
     schedules = _files(transition_dir / "Schedule", "*.csv")
-    if not master_plans or not schedules:
+    if not master_plans:
         raise ValueError(
             f"Transition {transition_name!r} must contain one .xlsx file in "
-            "Master_Plan and one .csv file in Schedule."
+            "Master_Plan."
         )
-    return master_plans[0], schedules[0]
+    return master_plans[0], (schedules[0] if schedules else None)
 
 
 def transition_schedule_path(transition_name: str) -> Path:
     """Return the validated Schedule CSV belonging to a transition."""
     _, schedule_path = _document_paths(transition_name)
+    if schedule_path is None:
+        raise ValueError(
+            f"Transition {transition_name!r} does not have a Schedule uploaded "
+            "yet. Upload one from the KT Scheduler tab."
+        )
     return schedule_path
 
 
@@ -235,7 +263,7 @@ def get_transition(transition_name: str) -> dict[str, Any]:
     finally:
         workbook.close()
 
-    sessions = _read_schedule(schedule_path)
+    sessions = _read_schedule(schedule_path) if schedule_path else []
     transcript_files = _files(
         transitions_root() / transition_name / "Teams_Transcripts", "*.vtt"
     )
@@ -244,7 +272,7 @@ def get_transition(transition_name: str) -> dict[str, Any]:
         "name": summary.get("Transition Name", transition_name).strip(),
         "files": {
             "master_plan": master_plan_path.name,
-            "schedule": schedule_path.name,
+            "schedule": schedule_path.name if schedule_path else "",
             "teams_transcript": transcript_files[0].name if transcript_files else "",
         },
         "summary": summary,
