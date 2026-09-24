@@ -4,42 +4,47 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Transition Management</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2">
+  <link rel="stylesheet" href="/static/styles.css?v=3">
 </head>
 <body>
   <header class="topbar">
     <div><p class="eyebrow">Transition workspace</p><h1>Transition Management</h1></div>
-    <div class="header-controls"><span id="current-transition-label" class="latest-label">No transition selected</span><span id="health-status" class="health pending">Checking health</span></div>
-  </header>
-  <main>
-    <nav class="workspace-nav" aria-label="Transition workspace navigation"><button class="workspace-nav-button active" type="button" data-workspace-view="current">Current transition</button><button class="workspace-nav-button" type="button" data-workspace-view="upload">Upload a transition</button><button class="workspace-nav-button" type="button" data-workspace-view="select">Select transitions</button></nav>
-    <section id="upload-transition-panel" class="upload-panel workspace-panel" aria-labelledby="upload-title" hidden>
-      <div class="upload-intro"><p class="eyebrow">Document intake</p><h2 id="upload-title">Upload a transition package</h2><p>Upload the Planner Master Plan to create a transition workspace. Attach the Schedule from the KT Scheduler tab, and a Teams Transcript <code>.vtt</code> file from the selected transition afterward.</p></div>
-      <form id="upload-form" class="upload-form">
-        <label>Transition name<input name="transition_name" placeholder="For example, Test AA" required maxlength="200"></label>
-        <label>Master Plan <input name="master_plan" type="file" accept=".xlsx" required><small>.xlsx from KT Planner</small></label>
-        <button class="upload-button" type="submit">Upload transition</button>
-      </form>
-    </section>
-    <section id="transition-list-panel" class="workspace-panel" hidden><div class="section-title"><div><p class="eyebrow">Transition library</p><h2>Uploaded transitions</h2></div></div><div id="transition-list" class="transition-list"></div></section>
-    <section id="current-transition-view" class="workspace-panel">
+      <div class="header-controls">
+        <label class="project-picker">
+          <span class="project-picker-label">Project</span>
+          <select id="transition-select" aria-label="Select a transition project"><option value="">No transitions uploaded</option></select>
+        </label>
+        <button id="new-transition-button" class="new-transition-button" type="button">+ New Transition</button>
+        <span id="health-status" class="health pending">Checking health</span>
+      </div>
+    </header>
+    <main>
+      <section id="upload-transition-panel" class="upload-panel" aria-labelledby="upload-title" hidden>
+        <div class="upload-intro"><p class="eyebrow">Document intake</p><h2 id="upload-title">Create a new transition project</h2><p>Upload the Planner Master Plan to create a project. Attach the Schedule from the KT Scheduler view, and a Teams Transcript <code>.vtt</code> file from the selected project afterward.</p></div>
+        <form id="upload-form" class="upload-form">
+          <label>Transition name<input name="transition_name" placeholder="For example, Test AA" required maxlength="200"></label>
+          <label>Master Plan <input name="master_plan" type="file" accept=".xlsx" required><small>.xlsx from KT Planner</small></label>
+          <button class="upload-button" type="submit">Upload transition</button>
+        </form>
+      </section>
+      <section id="current-transition-view" class="workspace-panel">
     <nav class="product-nav" aria-label="KT workspaces"><button class="product-nav-button active" type="button" data-product-view="scheduler"><span class="product-index">01</span><span>KT Scheduler</span><small>Test invitation control</small></button><button class="product-nav-button" type="button" data-product-view="tracker"><span class="product-index">02</span><span>KT Tracker</span><small>Transition intelligence</small></button></nav>
     <section id="scheduler-app" class="app-section">
-      <section class="scheduler-hero"><div><p class="eyebrow">Invitation control</p><h2>KT Scheduler</h2><p>Schedule and invitation management for the selected transition.</p></div><div class="scheduler-signal"><span>Selected transition</span><strong id="scheduler-transition-name">Select a transition in KT Tracker</strong><small id="scheduler-schedule-file">No schedule loaded</small></div></section>
+      <section class="scheduler-hero"><div><p class="eyebrow">Invitation control</p><h2>KT Scheduler</h2><p>Schedule and invitation management for the selected transition.</p></div><div class="scheduler-signal"><span>Selected transition</span><strong id="scheduler-transition-name">No transition selected</strong><small id="scheduler-schedule-file">No schedule loaded</small></div></section>
       <section id="scheduler-upload-panel" class="upload-panel" aria-labelledby="scheduler-upload-title">
-        <div class="upload-intro"><p class="eyebrow">Document intake</p><h2 id="scheduler-upload-title">Upload schedule</h2><p>Attach the Planner Schedule <code>.csv</code> to the transition selected above. Re-uploading replaces the current schedule.</p></div>
+        <div class="upload-intro"><p class="eyebrow">Document intake</p><h2 id="scheduler-upload-title">Upload schedule</h2><p>Attach the Planner Schedule <code>.csv</code> to the project selected above. Re-uploading replaces the current schedule.</p></div>
         <form id="scheduler-upload-form" class="upload-form">
           <label>Schedule <input name="schedule" type="file" accept=".csv" required><small>.csv from KT Planner</small></label>
           <button id="scheduler-upload-button" class="upload-button" type="submit" disabled>Upload schedule</button>
         </form>
-        <p id="scheduler-upload-hint" class="subtle">Upload or select a transition above first.</p>
+        <p id="scheduler-upload-hint" class="subtle">Select or create a project above first.</p>
       </section>
       <section class="scheduler-console" aria-labelledby="scheduler-title"><div class="scheduler-console-heading"><p class="eyebrow">Participants</p><h3 id="scheduler-title">Send invites</h3><p id="scheduler-recipient-summary">No transition selected</p></div><form id="scheduler-form" class="scheduler-form"><label>Recipients<input id="scheduler-recipients" name="test_recipients" type="text" readonly><small>Loaded from the selected transition schedule</small></label><button id="scheduler-send-button" class="scheduler-send-button" type="submit">Send invites</button></form></section>
       <section class="scheduler-schedule"><div class="section-title"><div><p class="eyebrow">Selected schedule</p><h3>KT sessions</h3></div><span id="scheduler-schedule-records" class="record-count"></span></div><div class="table-shell"><table><thead><tr><th>Session</th><th>Level</th><th>Date</th><th>Time</th><th>Duration</th><th>Mode</th><th>SME</th><th>Receiver</th><th>Status</th></tr></thead><tbody id="schedule-body"></tbody></table></div><div id="schedule-pagination" class="pagination"></div></section>
       <section id="scheduler-results" class="scheduler-results" hidden aria-live="polite"></section>
     </section>
     <section id="tracker-app" class="app-section" hidden>
-    <section id="empty-state" class="empty-state workspace-panel" hidden><p class="eyebrow">No uploaded transition</p><h2>Upload a transition package to begin</h2><p>The latest uploaded Master Plan will appear here. Attach the Schedule from the KT Scheduler tab.</p></section>
+    <section id="empty-state" class="empty-state workspace-panel" hidden><p class="eyebrow">No project selected</p><h2>Create or select a project to begin</h2><p>Use the <strong>+ New Transition</strong> button above to upload a Master Plan, or choose an existing project from the Project dropdown.</p></section>
     <section id="workspace" class="workspace-panel" hidden>
       <section class="transition-hero"><div><p class="eyebrow">Selected transition</p><h2 id="transition-name">-</h2><p id="transition-window" class="subtle">-</p></div><div class="document-files"><span>Master Plan <strong id="master-plan-file">-</strong></span><span>Schedule <strong id="schedule-file">-</strong></span><span>Teams Transcripts <strong id="teams-transcript-file">Not attached</strong></span></div></section>
       <section class="transcript-panel" aria-labelledby="transcript-title"><div><p class="eyebrow">Teams Transcripts</p><h3 id="transcript-title">Attach a meeting transcript</h3><p>Save a <code>.vtt</code> transcript to this selected transition.</p></div><form id="teams-transcript-form" class="transcript-form"><label>Teams transcript <input name="teams_transcript" type="file" accept=".vtt" required><small>.vtt file</small></label><button class="upload-button" type="submit">Upload transcript</button></form></section>
@@ -54,6 +59,6 @@
     </section>
   </main>
   <div id="notice" class="notice" role="status" aria-live="polite"></div>
-  <script src="/static/app.js?v=2"></script>
+  <script src="/static/app.js?v=3"></script>
 </body>
 </html>
