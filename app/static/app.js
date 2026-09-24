@@ -38,6 +38,7 @@ function setWorkspaceView(view) {
   document.querySelectorAll(".workspace-nav-button").forEach((button) => button.classList.toggle("active", button.dataset.workspaceView === view));
   byId("upload-transition-panel").hidden = view !== "upload";
   byId("transition-list-panel").hidden = view !== "select";
+  byId("current-transition-view").hidden = view !== "current";
   byId("workspace").hidden = view !== "current" || !transition;
   byId("empty-state").hidden = view !== "current" || Boolean(transition);
 }
@@ -120,7 +121,7 @@ async function init() {
 
 byId("upload-form").addEventListener("submit", async (event) => {
   event.preventDefault(); const button = event.target.querySelector("button"); button.disabled = true; button.textContent = "Uploading...";
-  try { const response = await fetch(`${API}/master-plan`, { method: "POST", body: new FormData(event.target) }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.detail || "Upload failed."); } const result = await response.json(); transition = result.transition; pageState["master-plan"] = 1; pageState.schedule = 1; render(); event.target.reset(); setWorkspaceView("current"); }
+  try { const response = await fetch(`${API}/master-plan`, { method: "POST", body: new FormData(event.target) }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.detail || "Upload failed."); } const result = await response.json(); transition = result.transition; pageState["master-plan"] = 1; pageState.schedule = 1; render(); event.target.reset(); setWorkspaceView("current"); setProductView("tracker"); }
   catch (error) { notify(error.message); }
   finally { button.disabled = false; button.textContent = "Upload transition"; }
 });
