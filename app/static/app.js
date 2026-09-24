@@ -81,6 +81,8 @@ function renderSchedulerResult(result) {
   const deliveryMessage = firstError.includes("Need to authenticate via SMTP-AUTH") ? "The SMTP relay requires authentication before it can send invites." : firstError ? "The SMTP relay could not send the invite. Check the server settings and try again." : "Each recipient is limited to one invitation for this run.";
   byId("scheduler-results").hidden = false;
   byId("scheduler-results").innerHTML = `<div class="result-metric"><span>Schedule sessions</span><strong>${result.total_items}</strong></div><div class="result-metric"><span>Invites sent</span><strong>${result.sent}</strong></div><div class="result-metric"><span>Skipped</span><strong>${result.skipped}</strong></div><div class="result-detail"><strong>${delivered ? "Invitation run completed" : "Invite delivery needs attention"}</strong><span>${escapeHtml(deliveryMessage)}</span></div>`;
+  notify(delivered ? "Invitation run completed." : `Invite delivery failed: ${deliveryMessage}`);
+  byId("scheduler-results").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function render() {
